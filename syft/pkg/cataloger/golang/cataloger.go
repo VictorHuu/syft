@@ -14,14 +14,21 @@ import (
 var versionCandidateGroups = regexp.MustCompile(`(?P<version>\d+(\.\d+)?(\.\d+)?)(?P<candidate>\w*)`)
 
 const (
-	modFileCatalogerName = "go-module-file-cataloger"
-	binaryCatalogerName  = "go-module-binary-cataloger"
+	modFileCatalogerName  = "go-module-file-cataloger"
+	workFileCatalogerName = "go-work-file-cataloger"
+	binaryCatalogerName   = "go-module-binary-cataloger"
 )
 
 // NewGoModuleFileCataloger returns a new cataloger object that searches within go.mod files.
 func NewGoModuleFileCataloger(opts CatalogerConfig) pkg.Cataloger {
 	return generic.NewCataloger(modFileCatalogerName).
 		WithParserByGlobs(newGoModCataloger(opts).parseGoModFile, "**/go.mod")
+}
+
+// NewGoWorkFileCataloger returns a new cataloger object that searches within go.work files.
+func NewGoWorkFileCataloger(opts CatalogerConfig) pkg.Cataloger {
+	return generic.NewCataloger(workFileCatalogerName).
+		WithParserByGlobs(newGoWorkCataloger(opts).parseGoWorkFile, "**/go.work")
 }
 
 // NewGoModuleBinaryCataloger returns a new cataloger object that searches within binaries built by the go compiler.

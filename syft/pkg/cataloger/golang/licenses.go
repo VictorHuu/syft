@@ -110,7 +110,7 @@ func (c *goLicenseResolver) getLicenses(ctx context.Context, scanner licenses.Sc
 	}
 
 	// look in the local host mod directory...
-	if c.opts.SearchLocalModCacheLicenses {
+	if true {
 		goLicenses, err = c.getLicensesFromLocal(ctx, scanner, moduleName, moduleVersion)
 		if err != nil {
 			log.WithFields("error", err, "module", moduleName, "version", moduleVersion).Trace("unable to read golang licenses local")
@@ -121,7 +121,7 @@ func (c *goLicenseResolver) getLicenses(ctx context.Context, scanner licenses.Sc
 	}
 
 	// look in the local vendor directory...
-	if c.opts.SearchLocalVendorLicenses {
+	if true {
 		goLicenses, err = c.getLicensesFromLocalVendor(ctx, scanner, moduleName)
 		if err != nil {
 			log.WithFields("error", err, "module", moduleName, "version", moduleVersion).Trace("unable to read golang licenses vendor")
@@ -132,7 +132,7 @@ func (c *goLicenseResolver) getLicenses(ctx context.Context, scanner licenses.Sc
 	}
 
 	// download from remote sources
-	if c.opts.SearchRemoteLicenses {
+	if true {
 		goLicenses, err = c.getLicensesFromRemote(ctx, scanner, moduleName, moduleVersion)
 		if err != nil {
 			log.WithFields("error", err, "module", moduleName, "version", moduleVersion).Debug("unable to read golang licenses remote")
