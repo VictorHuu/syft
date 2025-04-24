@@ -10,9 +10,6 @@ import (
 	"sort"
 	"strings"
 
-	"golang.org/x/mod/modfile"
-	"golang.org/x/mod/module"
-
 	"github.com/anchore/syft/internal"
 	"github.com/anchore/syft/internal/licenses"
 	"github.com/anchore/syft/internal/log"
@@ -20,6 +17,7 @@ import (
 	"github.com/anchore/syft/syft/file"
 	"github.com/anchore/syft/syft/pkg"
 	"github.com/anchore/syft/syft/pkg/cataloger/generic"
+	"golang.org/x/mod/modfile"
 )
 
 type goModCataloger struct {
@@ -36,23 +34,26 @@ func newGoModCataloger(opts CatalogerConfig) *goModCataloger {
 var modfiles map[string]*modfile.File
 
 func (c *goModCataloger) buildGoPkg(ctx context.Context, resolver file.Resolver, reader file.LocationReadCloser,
-	m module.Version, licenseScanner licenses.Scanner, digests map[string]string) pkg.Package {
-	lics := c.licenseResolver.getLicenses(ctx, licenseScanner, resolver, m.Path, m.Version)
+	path string, ver string, licenseScanner licenses.Scanner, digests map[string]string) pkg.Package {
+	lics := c.licenseResolver.getLicenses(ctx, licenseScanner, resolver, path, ver)
 	p := pkg.Package{
-		Name:      m.Path,
-		Version:   m.Version,
+		Name:      path,
+		Version:   ver,
 		Licenses:  pkg.NewLicenseSet(lics...),
 		Locations: file.NewLocationSet(reader.Location.WithAnnotation(pkg.EvidenceAnnotationKey, pkg.PrimaryEvidenceAnnotation)),
-		PURL:      packageURL(m.Path, m.Version),
+		PURL:      packageURL(path, ver),
 		Language:  pkg.Go,
 		Type:      pkg.GoModulePkg,
 		Metadata: pkg.GolangModuleEntry{
-			H1Digest: digests[fmt.Sprintf("%s %s", m.Path, m.Version)],
+			H1Digest: digests[fmt.Sprintf("%s %s", path, ver)],
 		},
 	}
 	p.SetID()
 	return p
 }
+
+var total_packages map[string]pkg.Package
+
 func (c *goModCataloger) recursivelyBuildGoDeps(ctx context.Context, resolver file.Resolver, reader file.LocationReadCloser,
 	f *modfile.File, licenseScanner licenses.Scanner, digests map[string]string) (packages map[string]pkg.Package, rels []artifact.Relationship, err error) {
 	if f == nil {
@@ -65,30 +66,60 @@ func (c *goModCataloger) recursivelyBuildGoDeps(ctx context.Context, resolver fi
 		return
 	}
 	modfiles[f.Module.Mod.Path] = f
+	if len(total_packages) == 0 {
+		total_packages = make(map[string]pkg.Package)
+	}
 	if len(packages) == 0 {
-		packages = make(map[string]pkg.Package)
+		packages = total_packages
 	}
 	if _, exists := packages[f.Module.Mod.Path]; !exists {
-		packages[f.Module.Mod.Path] = c.buildGoPkg(ctx, resolver, reader, f.Module.Mod, licenseScanner, digests)
+		packages[f.Module.Mod.Path] = c.buildGoPkg(ctx, resolver, reader, f.Module.Mod.Path, f.Module.Mod.Version, licenseScanner, digests)
 	}
 	var deps []pkg.Package
 	for _, m := range f.Require {
-		if m.Indirect {
-			continue
-		}
 		_, exists := packages[m.Mod.Path]
 		if exists {
 			continue
 		}
-		packages[m.Mod.Path] = c.buildGoPkg(ctx, resolver, reader, m.Mod, licenseScanner, digests)
-		//deps are the immediate ones to the main package
-		deps = append(deps, packages[m.Mod.Path])
-		nf, err := c.getGoModFile(resolver, m.Mod.Path, m.Mod.Version)
-		if err != nil {
+		packages[m.Mod.Path] = c.buildGoPkg(ctx, resolver, reader, m.Mod.Path, m.Mod.Version, licenseScanner, digests)
+	}
+
+	finalModulePath := f.Module.Mod.Path
+	// remove any old packages and replace with new ones...
+	for _, m := range f.Replace {
+		// the old path and new path may be the same, in which case this is a noop,
+		// but if they're different we need to remove the old package.
+
+		var finalPath string
+		if !strings.HasPrefix(m.New.Path, ".") && !strings.HasPrefix(m.New.Path, "/") {
+			finalPath = m.New.Path
+			delete(packages, m.Old.Path)
+		} else {
+			finalPath = m.Old.Path
+		}
+		if strings.EqualFold(m.Old.Path, finalModulePath) {
+			finalModulePath = finalPath
+		}
+
+		packages[finalPath] = c.buildGoPkg(ctx, resolver, reader, finalPath, m.New.Version, licenseScanner, digests)
+	}
+	// remove any packages from the exclude fields
+	for _, m := range f.Exclude {
+		delete(packages, m.Mod.Path)
+	}
+	//The recursive function don't modify the existing packages in case of duplicated package refs
+	for _, m := range f.Require {
+		if m.Indirect {
 			continue
 		}
-		sub_pkgs, sub_rels, err := c.recursivelyBuildGoDeps(ctx, resolver, reader, nf, licenseScanner, digests)
-		if err != nil {
+		//deps are the immediate ones to the main package
+		deps = append(deps, packages[m.Mod.Path])
+		nf, err1 := c.getGoModFile(resolver, m.Mod.Path, m.Mod.Version)
+		if err1 != nil {
+			continue
+		}
+		sub_pkgs, sub_rels, err2 := c.recursivelyBuildGoDeps(ctx, resolver, reader, nf, licenseScanner, digests)
+		if err2 != nil {
 			continue
 		}
 		for k, v := range sub_pkgs {
@@ -96,23 +127,18 @@ func (c *goModCataloger) recursivelyBuildGoDeps(ctx context.Context, resolver fi
 				packages[k] = v
 			}
 		}
-		rels = append(rels, sub_rels...)
+		for _, sub_rel := range sub_rels {
+			if _, exists := packages[sub_rel.From.(pkg.Package).Name]; exists {
+				if _, exists2 := packages[sub_rel.To.(pkg.Package).Name]; exists2 {
+					rels = append(rels, sub_rel)
+				}
+			}
+		}
+
 	}
-	m_rels := createModuleRelationships(packages[f.Module.Mod.Path], deps)
+	m_rels := createModuleRelationships(packages[finalModulePath], deps)
 	rels = append(rels, m_rels...)
-	// remove any old packages and replace with new ones...
-	for _, m := range f.Replace {
-		// the old path and new path may be the same, in which case this is a noop,
-		// but if they're different we need to remove the old package.
-		delete(packages, m.Old.Path)
-
-		packages[m.New.Path] = c.buildGoPkg(ctx, resolver, reader, m.New, licenseScanner, digests)
-	}
-
-	// remove any packages from the exclude fields
-	for _, m := range f.Exclude {
-		delete(packages, m.Mod.Path)
-	}
+	total_packages = packages
 	return
 }
 

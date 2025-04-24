@@ -145,8 +145,8 @@ func (c *goWorkCataloger) createModuleRelationships(main pkg.Package, deps []pkg
 
 	for _, dep := range deps {
 		relationships = append(relationships, artifact.Relationship{
-			From: dep,
-			To:   main,
+			From: main,
+			To:   dep,
 			Type: artifact.ContainsRelationship,
 		})
 	}

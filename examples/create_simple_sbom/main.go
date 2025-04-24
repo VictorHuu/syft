@@ -12,7 +12,7 @@ import (
 	"github.com/anchore/syft/syft/source"
 )
 
-const defaultImage = "../aws-sdk-go-v2/feature/ec2/imds"
+const defaultImage = "alpine:3.18"
 
 func main() {
 	// automagically get a source.Source for arbitrary string input
