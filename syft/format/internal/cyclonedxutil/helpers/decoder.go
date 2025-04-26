@@ -258,6 +258,7 @@ func extractComponents(meta *cyclonedx.Metadata) source.Description {
 				Group:       c.Group,
 				Description: c.Description,
 				PackageURL:  c.PackageURL,
+				ExternalRef: c.ExternalReferences,
 			},
 		}
 	case cyclonedx.ComponentTypeLibrary:
@@ -270,6 +271,7 @@ func extractComponents(meta *cyclonedx.Metadata) source.Description {
 				Group:       c.Group,
 				Description: c.Description,
 				PackageURL:  c.PackageURL,
+				ExternalRef: c.ExternalReferences,
 			},
 		}
 	}
