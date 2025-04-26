@@ -248,11 +248,38 @@ func extractComponents(meta *cyclonedx.Metadata) source.Description {
 			ID:       "",
 			Metadata: source.FileMetadata{Path: c.Name},
 		}
+	case cyclonedx.ComponentTypeApplication:
+		return source.Description{
+			ID: "",
+			Metadata: source.ApplicationMetadata{
+				UserInput:   c.Name,
+				ID:          c.BOMRef,
+				Version:     c.Version,
+				Group:       c.Group,
+				Description: c.Description,
+				PackageURL:  c.PackageURL,
+			},
+		}
+	case cyclonedx.ComponentTypeLibrary:
+		return source.Description{
+			ID: "",
+			Metadata: source.LibraryMetadata{
+				UserInput:   c.Name,
+				ID:          c.BOMRef,
+				Version:     c.Version,
+				Group:       c.Group,
+				Description: c.Description,
+				PackageURL:  c.PackageURL,
+			},
+		}
 	}
-	desc := source.Description{
-		Metadata: source.UnknownMetadata{},
+	return source.Description{
+		Metadata: source.UnknownMetadata{
+			UserInput: c.Name,
+			ID:        c.BOMRef,
+			Version:   c.Version,
+		},
 	}
-	return desc
 }
 
 // if there is more than one tool in meta.Tools' list the last item will be used
