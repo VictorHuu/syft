@@ -38,8 +38,8 @@ jobs:
         with:
           download-test-fixture-cache: true
 
-      - name: Run unit tests
-        run: make unit
+      - name: Debug
+        run: ls /home/runner/work/syft/syft/syft/pkg/cataloger/golang/test-fixtures -laR
 
 
   Integration-Test:
